@@ -213,30 +213,8 @@ const markdownComponents = {
   ),
 };
 
-/**
- * (Unused helper retained for backward compatibility)
- * Function to get initial messages from local storage
- *
- * @returns Initial messages from local storage or an empty array
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const getInitialMessages = (): ChatMessage[] => {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("symptomSyncChat");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return [];
-      }
-    }
-  }
-  return [];
-};
-
 // Been facing hydration issues for ages... So trying this workaround
 // to ensure the component only mounts on the client side
-// We don't need the entire chat to be server-rendered anyway...
 const ClientOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mounted, setMounted] = useState(false);
 
@@ -262,8 +240,6 @@ export default function AIChatPage() {
   const hasSentMessageRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const broadcastChannelRef = useRef<any>(null);
   const [latestMeds, setLatestMeds] = useState<
     Awaited<ReturnType<typeof getMedicationRemindersByUser>>
   >([]);
@@ -310,47 +286,8 @@ export default function AIChatPage() {
     }
   }, [messages, userId]);
 
-  useEffect(() => {
-    async function subscribeToUserChannel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const userChannelName = `user-channel-${user.id}`;
-      broadcastChannelRef.current = supabase.channel(userChannelName, {
-        config: { broadcast: { self: false } },
-      });
-      const channel = broadcastChannelRef.current;
-
-      channel
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .on("broadcast", { event: "*" }, (payload: any) => {
-          toast.success(
-            `Notification: ${payload.payload.message.replace(/\./g, "")} from another device or tab.`,
-          );
-        })
-        .subscribe((status: string) => {
-          console.log("User-specific channel status:", status);
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-        broadcastChannelRef.current = null;
-      };
-    }
-
-    subscribeToUserChannel();
-  }, [router]);
-
   /**
    * This function handles sending the user's input to the AI and receiving a response
-   *
-   * @returns The AI's response to the user's input
    */
   async function handleSend() {
     if (!userInput.trim() || loading) return;
@@ -460,7 +397,7 @@ export default function AIChatPage() {
       if (parsedAction) {
         setPendingAction(parsedAction);
       } else {
-        // Fallback: try to derive a health log action from the user's request if the AI forgot the action block
+        // Fallback: try to derive a health log action from the user's request
         const derived = deriveHealthLogFromInput(userInput);
         if (derived) {
           setPendingAction(derived);
@@ -476,6 +413,8 @@ export default function AIChatPage() {
         if (err.message.includes("429")) {
           friendly =
             "AI hit a rate limit. Please retry in a few seconds or check quota.";
+        } else if (err.message.includes("email")) {
+          friendly = "AI response format issue. Please try again.";
         } else {
           friendly = err.message;
         }
@@ -494,6 +433,10 @@ export default function AIChatPage() {
       if (!raw) return null;
       try {
         const parsed = JSON.parse(raw);
+        // Remove any email field if present (fix for AI adding it)
+        if (parsed.data && parsed.data.email) {
+          delete parsed.data.email;
+        }
         if (
           parsed &&
           (parsed.entity === "appointment" ||
@@ -528,7 +471,6 @@ export default function AIChatPage() {
       lower.includes("health log") ||
       lower.includes("log") ||
       lower.includes("record");
-    // Quick heuristic: if it mentions log/symptom or contains severity-like numbers, try to build a health log action
     if (!mentionsLog && !/\b\d{1,2}\b/.test(lower)) return null;
 
     const parts = input
@@ -597,7 +539,7 @@ export default function AIChatPage() {
         .replace(/^tmr[, ]*/i, "")
         .replace(/^yesterday[, ]*/i, "")
         .trim();
-      if (!timePart) return null; // require a time when using relative words
+      if (!timePart) return null;
       const combined = tryCombine(keywordDate, timePart);
       if (combined) return combined;
     }
@@ -606,7 +548,6 @@ export default function AIChatPage() {
     if (!Number.isNaN(direct.getTime())) {
       return direct.toISOString();
     }
-    // Fallback: try using today's date with provided time (e.g., "7:00 PM")
     const today = new Date();
     const fallback = tryCombine(today, trimmed);
     return fallback;
@@ -909,9 +850,7 @@ export default function AIChatPage() {
   };
 
   /**
-   * Animated dots for loading state - like 1, 2, 3 dots...
-   *
-   * @returns Animated dots for loading state
+   * Animated dots for loading state
    */
   const AnimatedDots: React.FC = () => {
     const [dots, setDots] = useState("");
@@ -927,8 +866,7 @@ export default function AIChatPage() {
   };
 
   /**
-   * Scroll to the bottom of the chat when new messages are added or on initial load
-   * since the messages are loaded from local storage
+   * Scroll to the bottom of the chat when new messages are added
    */
   useEffect(() => {
     if (messages.length > 0) {

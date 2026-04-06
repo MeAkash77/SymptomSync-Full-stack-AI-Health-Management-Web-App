@@ -86,8 +86,6 @@ export default function DocumentsPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const broadcastChannelRef = useRef<any>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<FileRow | null>(null);
   const [editFilename, setEditFilename] = useState("");
@@ -100,43 +98,6 @@ export default function DocumentsPage() {
       return true;
     },
   });
-
-  useEffect(() => {
-    async function subscribeToUserChannel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const userChannelName = `user-channel-${user.id}`;
-      broadcastChannelRef.current = supabase.channel(userChannelName, {
-        config: { broadcast: { self: false } },
-      });
-      const channel = broadcastChannelRef.current;
-
-      channel
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .on("broadcast", { event: "*" }, (payload: any) => {
-          toast.success(
-            `Notification: ${payload.payload.message.replace(/\./g, "")} from another device or tab.`,
-          );
-        })
-        .subscribe((status: string) => {
-          console.log("User-specific channel status:", status);
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-        broadcastChannelRef.current = null;
-      };
-    }
-
-    subscribeToUserChannel();
-  }, [router]);
 
   async function fetchFiles() {
     setLoadingFiles(true);

@@ -337,8 +337,6 @@ export default function CalendarPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [appointments, setAppointments] = useState<AppointmentReminder[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const channelRefs = useRef<any[]>([]);
   const [showSelectTypeDialog, setShowSelectTypeDialog] = useState(false);
   const [slotDate, setSlotDate] = useState<Date | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -367,8 +365,6 @@ export default function CalendarPage() {
   );
   const [showIcsDialog, setShowIcsDialog] = useState(false);
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const broadcastChannelRef = useRef<any>(null);
   const [editMedDosage, setEditMedDosage] = useState("");
   const [editMedDosageUnit, setEditMedDosageUnit] = useState("mg");
   const [editMedRecurrence, setEditMedRecurrence] = useState("Daily");
@@ -385,167 +381,9 @@ export default function CalendarPage() {
    * @param message - The message to send with the event
    */
   const sendBroadcast = (eventName: string, message: string) => {
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.send({
-        type: "broadcast",
-        event: eventName,
-        payload: { message },
-      });
-    }
+    // Broadcast functionality removed - notifications handled in _app.tsx
+    console.log(`Broadcast (${eventName}): ${message}`);
   };
-
-  /**
-   * Supabase Realtime #1: Subscribe to changes in medication and appointment reminders
-   * and update the UI immediately as changes occur
-   */
-  useEffect(() => {
-    let isMounted = true;
-    async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user || !isMounted) return;
-      setUserId(user.id);
-      await fetchAllData(user.id);
-
-      const medsChannel = supabase
-        .channel("medsSub")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "medication_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "medication_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "medication_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .subscribe();
-      channelRefs.current.push(medsChannel);
-
-      const apptsChannel = supabase
-        .channel("apptsSub")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "appointment_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "appointment_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "appointment_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          async () => {
-            await fetchAllData(user.id);
-          },
-        )
-        .subscribe();
-      channelRefs.current.push(apptsChannel);
-    }
-
-    init();
-
-    return () => {
-      isMounted = false;
-      channelRefs.current.forEach((ch) => supabase.removeChannel(ch));
-    };
-  }, []);
-
-  /**
-   * Supabase Realtime #2: In the above realtime functionality, we already
-   * created postgres changes for meds, appointments, and health logs. However,
-   * that will only update the UI if the user adds a new med, appointment, or log
-   * from another device. But we may also wanna broadcast a message to the user
-   * when a new med, appointment, or log is added from another device as well.
-   * This is where the broadcast channel comes in - it will broadcast a message
-   * to the user when a new med, appointment, or log is added from another device so
-   * that the user knows that something has changed in the UI and the reason
-   * for that change.
-   */
-  useEffect(() => {
-    async function subscribeToUserChannel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const userChannelName = `user-channel-${user.id}`;
-      broadcastChannelRef.current = supabase.channel(userChannelName, {
-        config: { broadcast: { self: false } },
-      });
-      const channel = broadcastChannelRef.current;
-
-      channel
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .on("broadcast", { event: "*" }, (payload: any) => {
-          toast.success(
-            `Notification: ${payload.payload.message.replace(/\./g, "")} from another device or tab.`,
-          );
-        })
-        .subscribe((status: string) => {
-          console.log("User-specific channel status:", status);
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-        broadcastChannelRef.current = null;
-      };
-    }
-
-    subscribeToUserChannel();
-  }, [router]);
 
   /**
    * Fetch all data from the server and update the state
@@ -595,6 +433,27 @@ export default function CalendarPage() {
       setIsLoading(false);
     }
   }
+
+  /**
+   * Initialize user and fetch data on component mount
+   */
+  useEffect(() => {
+    let isMounted = true;
+    async function init() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || !isMounted) return;
+      setUserId(user.id);
+      await fetchAllData(user.id);
+    }
+
+    init();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   /**
    * Handle slot selection on the calendar
@@ -1034,7 +893,7 @@ export default function CalendarPage() {
               }}
               className="hover:-translate-y-1 transition-transform duration-300 cursor-pointer"
             >
-              <CalendarIcon className="w-4 h-4ZZZZZ" /> Add Appointment
+              <CalendarIcon className="w-4 h-4" /> Add Appointment
             </Button>
             <Button
               variant="default"
@@ -1044,14 +903,14 @@ export default function CalendarPage() {
               }}
               className="hover:-translate-y-1 transition-transform duration-300 cursor-pointer"
             >
-              <Pill className="w-4 h-4ZZZZZ" /> Add Medication
+              <Pill className="w-4 h-4" /> Add Medication
             </Button>
             <Button
               variant="outline"
               onClick={() => setShowIcsDialog(true)}
               className="hover:-translate-y-1 transition-transform duration-300 cursor-pointer"
             >
-              <Download className="w-4 h-4ZZZZZ" /> ICS Sync
+              <Download className="w-4 h-4" /> ICS Sync
             </Button>
             <Button
               variant="secondary"
@@ -1063,11 +922,11 @@ export default function CalendarPage() {
             >
               {selectMode ? (
                 <>
-                  <XSquare className="w-4 h-4ZZZZZ" /> Cancel Selection
+                  <XSquare className="w-4 h-4" /> Cancel Selection
                 </>
               ) : (
                 <>
-                  <CheckSquare className="w-4 h-4ZZZZZ" /> Select Multiple
+                  <CheckSquare className="w-4 h-4" /> Select Multiple
                 </>
               )}
             </Button>
@@ -1077,7 +936,7 @@ export default function CalendarPage() {
                 className="hover:-translate-y-1 transition-transform duration-300 cursor-pointer"
                 onClick={handleDeleteSelected}
               >
-                <Trash2 className="w-4 h-4ZZZZZ" /> Delete{" "}
+                <Trash2 className="w-4 h-4" /> Delete{" "}
                 {selectedEventIds.size} Selected
               </Button>
             )}

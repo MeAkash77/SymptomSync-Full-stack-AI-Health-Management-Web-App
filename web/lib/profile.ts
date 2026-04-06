@@ -6,16 +6,20 @@ import { z } from "zod";
  * It includes functions to get the current user's profile, update the profile,
  * upload and remove the user's avatar, and search for profiles based on a search term.
  */
+
+// Make email optional in the schema since it comes from auth, not the database
 export const ProfileSchema = z.object({
   id: z.string(),
-  email: z.string(),
   full_name: z.string().nullable(),
   avatar_url: z.string().nullable(),
   condition_tags: z.array(z.string()),
   created_at: z.string(),
 });
 
-export type Profile = z.infer<typeof ProfileSchema>;
+// Add email as optional in the type
+export type Profile = z.infer<typeof ProfileSchema> & {
+  email?: string;
+};
 
 /**
  * Retrieves the current user's profile from the Supabase database.
@@ -23,25 +27,66 @@ export type Profile = z.infer<typeof ProfileSchema>;
  * @throws An error if there is an issue retrieving the profile data.
  */
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
+    if (!user) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle(); // Changed from .single() to .maybeSingle()
+
+    if (error) {
+      console.error("Error fetching profile:", error);
+      return null;
+    }
+
+    // If no profile exists, create one
+    if (!data) {
+      console.log("No profile found, creating one...");
+      const newProfile = {
+        id: user.id,
+        full_name: user.email?.split('@')[0] || null,
+        avatar_url: null,
+        condition_tags: [],
+        created_at: new Date().toISOString(),
+      };
+
+      const { data: created, error: insertError } = await supabase
+        .from("user_profiles")
+        .insert(newProfile)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Error creating profile:", insertError);
+        return null;
+      }
+
+      // Validate without email
+      const validated = ProfileSchema.parse(created);
+      return {
+        ...validated,
+        email: user.email,
+      };
+    }
+
+    // Validate existing profile
+    const validated = ProfileSchema.parse(data);
+    return {
+      ...validated,
+      email: user.email,
+    };
+  } catch (err) {
+    console.error("Unexpected error in getCurrentProfile:", err);
     return null;
   }
-
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return ProfileSchema.parse(data);
 }
 
 /**
@@ -83,13 +128,21 @@ export async function updateProfile({
     .update(updatePayload)
     .eq("id", user.id)
     .select("*")
-    .single();
+    .maybeSingle(); // Changed from .single() to .maybeSingle()
 
   if (error) {
     throw error;
   }
 
-  return ProfileSchema.parse(data);
+  if (!data) {
+    throw new Error("Profile not found after update");
+  }
+
+  const validated = ProfileSchema.parse(data);
+  return {
+    ...validated,
+    email: user.email,
+  };
 }
 
 /**
@@ -150,7 +203,7 @@ export async function removeAvatar(): Promise<void> {
   }
 
   if (!removed) {
-    throw new Error("Failed to remove avatar file.");
+    console.warn("No avatar file found to remove");
   }
 
   const { error: updateError } = await supabase
@@ -173,11 +226,20 @@ export async function searchProfiles(searchTerm: string): Promise<Profile[]> {
   const { data, error } = await supabase
     .from("user_profiles")
     .select("*")
-    .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+    .ilike("full_name", `%${searchTerm}%`)
+    .limit(10);
 
   if (error) {
-    throw error;
+    console.error("Error searching profiles:", error);
+    return [];
   }
 
-  return ProfileSchema.array().parse(data) || [];
+  // Validate each profile without email
+  return data.map(profile => {
+    const validated = ProfileSchema.parse(profile);
+    return {
+      ...validated,
+      email: undefined,
+    };
+  });
 }

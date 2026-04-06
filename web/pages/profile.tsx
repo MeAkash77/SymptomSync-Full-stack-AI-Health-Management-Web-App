@@ -1,6 +1,5 @@
 import { useState, useEffect, ChangeEvent, useRef } from "react";
 import { useRouter } from "next/router";
-import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import { toast } from "sonner";
 import {
   getCurrentProfile,
   updateProfile,
-  uploadAvatar,
   removeAvatar,
   searchProfiles,
   type Profile,
@@ -66,6 +64,163 @@ const fadeInUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
 };
 
+// Helper function to get avatar URL with fallback
+const getAvatarUrl = (profile: Profile | null | undefined): string => {
+  if (!profile) return "";
+  if (profile.avatar_url) return profile.avatar_url;
+  // Generate a nice avatar from UI Avatars API using the user's name
+  const name = profile.full_name || "User";
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=344966&color=fff&bold=true`;
+};
+
+// Avatar component with error handling
+const ProfileAvatar = ({ profile, className }: { profile: Profile | null | undefined; className?: string }) => {
+  const [imgError, setImgError] = useState(false);
+  const avatarUrl = getAvatarUrl(profile);
+
+  if (!profile) {
+    return (
+      <Avatar className={className}>
+        <AvatarFallback>
+          <User className="w-10 h-10" />
+        </AvatarFallback>
+      </Avatar>
+    );
+  }
+
+  return (
+    <Avatar className={className}>
+      {!imgError && avatarUrl ? (
+        <AvatarImage
+          src={avatarUrl}
+          alt={profile.full_name || "User"}
+          onError={() => setImgError(true)}
+        />
+      ) : null}
+      <AvatarFallback>
+        <User className="w-10 h-10" />
+      </AvatarFallback>
+    </Avatar>
+  );
+};
+
+// FIXED: Direct avatar upload function with proper delete before upload
+const uploadAvatarDirect = async (file: File, userId: string): Promise<string | null> => {
+  console.log("📸 Starting avatar upload...");
+  console.log("📸 File:", file.name, file.type, file.size);
+  console.log("📸 User ID:", userId);
+  
+  if (!file) {
+    console.error("❌ No file provided");
+    toast.error("No file selected");
+    return null;
+  }
+
+  // Check file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    console.error("❌ File too large:", file.size);
+    toast.error("File too large. Maximum size is 5MB");
+    return null;
+  }
+
+  // Check file type
+  if (!file.type.startsWith('image/')) {
+    console.error("❌ Invalid file type:", file.type);
+    toast.error("Please select an image file");
+    return null;
+  }
+
+  try {
+    const fileName = `${userId}.jpg`;
+    console.log("📸 Target filename:", fileName);
+
+    // Check if file exists first
+    const { data: existingFiles, error: listError } = await supabase.storage
+      .from('avatars')
+      .list('', {
+        search: fileName,
+        limit: 1,
+      });
+    
+    console.log("📸 Existing files check:", existingFiles);
+    
+    // Try to delete old file if it exists
+    if (existingFiles && existingFiles.length > 0) {
+      console.log("📸 Old file found, attempting to delete...");
+      const { error: deleteError } = await supabase.storage
+        .from('avatars')
+        .remove([fileName]);
+      
+      if (deleteError) {
+        console.error("❌ Delete error:", deleteError);
+      } else {
+        console.log("✅ Old avatar deleted successfully");
+      }
+    } else {
+      console.log("📸 No existing file found");
+    }
+    
+    // Upload new file using upsert as fallback
+    console.log("📸 Uploading new file...");
+    const { error: uploadError, data: uploadData } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("❌ Upload error details:", uploadError);
+      toast.error(`Upload failed: ${uploadError.message}`);
+      return null;
+    }
+
+    console.log("✅ Upload successful:", uploadData);
+
+    const { data: publicUrlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(fileName);
+
+    console.log("📸 Public URL:", publicUrlData.publicUrl);
+    
+    return publicUrlData.publicUrl;
+  } catch (err) {
+    console.error("❌ Unexpected error during upload:", err);
+    toast.error("Unexpected error during upload");
+    return null;
+  }
+};
+
+// FIXED: Direct profile update function with maybeSingle()
+const updateProfileDirect = async (userId: string, updates: {
+  full_name?: string;
+  avatar_url?: string | null;
+  condition_tags?: string[];
+}) => {
+  console.log("📝 Updating profile directly with:", updates);
+  
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .update({
+      full_name: updates.full_name,
+      avatar_url: updates.avatar_url,
+      condition_tags: updates.condition_tags,
+    })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  console.log("📝 Update result:", { data, error });
+
+  if (error) {
+    console.error("❌ Update error:", error);
+    throw error;
+  }
+
+  console.log("✅ Update successful:", data);
+  return data;
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -82,129 +237,174 @@ export default function ProfilePage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const profileToDisplay = selectedProfile || profile;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const broadcastChannelRef = useRef<any>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
 
-  useQuery({
-    queryKey: ["profile"],
-    queryFn: async () => {
-      const {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        data: { user },
-      } = await supabase.auth.getUser();
-      const data = await getCurrentProfile();
-      if (!data) {
+  // FIXED: Proper profile fetching with maybeSingle() and correct loading state management
+  useEffect(() => {
+    const fetchProfile = async () => {
+      setLoading(true);
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData?.user) {
+        console.error("User not authenticated:", userError);
+        setLoading(false);
         router.push("/auth/login");
-        return null;
+        return;
       }
+
+      console.log("USER:", userData.user);
+      setUserEmail(userData.user.email || "");
+
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("id", userData.user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching profile:", error);
+        toast.error("Failed to load profile");
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      console.log("PROFILE:", data);
+
+      if (!data) {
+        // Create a profile if it doesn't exist
+        console.warn("No profile found for user, creating one...");
+        const newProfile = {
+          id: userData.user.id,
+          full_name: userData.user.email?.split('@')[0] || "User",
+          avatar_url: null,
+          condition_tags: [],
+          created_at: new Date().toISOString(),
+        };
+        
+        const { data: created, error: insertError } = await supabase
+          .from("user_profiles")
+          .insert(newProfile)
+          .select()
+          .single();
+          
+        if (insertError) {
+          console.error("Error creating profile:", insertError);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        
+        setProfile(created);
+        setFullName(created.full_name || "User");
+        setConditionTags((created.condition_tags || []).join(", "));
+        setLoading(false);
+        return;
+      }
+
       setProfile(data);
-      setFullName(data.full_name || data.email);
+      setFullName(data.full_name || userData.user.email?.split('@')[0] || "User");
       setConditionTags((data.condition_tags || []).join(", "));
       setLoading(false);
-      return data;
-    },
-    enabled: true,
-  });
+    };
 
-  useQuery({
-    queryKey: ["profileSearch", debouncedSearchQuery],
-    queryFn: async () => {
+    fetchProfile();
+  }, [router]);
+
+  // FIXED: Search profiles with proper error handling
+  useEffect(() => {
+    const searchProfilesAsync = async () => {
       if (debouncedSearchQuery.trim() === "") {
         setSearchResults([]);
-        return [];
+        return;
       }
       setSearchLoading(true);
       try {
         const results = await searchProfiles(debouncedSearchQuery.trim());
         setSearchResults(results);
-        return results;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
+        console.error("Error searching profiles:", error);
         toast.error("Error searching profiles: " + error.message);
-        return [];
+        setSearchResults([]);
       } finally {
         setSearchLoading(false);
       }
-    },
-    enabled: true,
-  });
+    };
 
-  useEffect(() => {
-    async function subscribeToUserChannel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const userChannelName = `user-channel-${user.id}`;
-      broadcastChannelRef.current = supabase.channel(userChannelName, {
-        config: { broadcast: { self: false } },
-      });
-      const channel = broadcastChannelRef.current;
-
-      channel
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .on("broadcast", { event: "*" }, (payload: any) => {
-          toast.success(
-            `Notification: ${payload.payload.message.replace(/\./g, "")} from another device or tab.`,
-          );
-        })
-        .subscribe((status: string) => {
-          console.log("User-specific channel status:", status);
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-        broadcastChannelRef.current = null;
-      };
-    }
-
-    subscribeToUserChannel();
-  }, [router]);
+    searchProfilesAsync();
+  }, [debouncedSearchQuery]);
 
   /**
    * Handles the change event for the avatar file input
-   *
-   * @param e - The change event from the file input
    */
   const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setAvatarFile(e.target.files[0]);
+    const file = e.target.files?.[0];
+    console.log("📸 FILE SELECTED:", file?.name, file?.type, file?.size);
+    if (file) {
+      setAvatarFile(file);
     }
   };
 
   /**
    * Handles the form submission to update the profile
-   *
-   * @param e - The form event
    */
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!profile) {
+      console.log("❌ No profile found, cannot update");
+      toast.error("Profile not found. Please refresh the page.");
+      return;
+    }
+    
     setProfileLoading(true);
+    
     try {
-      let avatar_url = profile?.avatar_url || null;
-      if (avatarFile) {
-        avatar_url = await uploadAvatar(avatarFile);
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !userData?.user) {
+        throw new Error("User not authenticated: " + userError?.message);
       }
+
+      console.log("📸 User ID for upload:", userData.user.id);
+
+      let avatar_url = profile.avatar_url || null;
+      
+      if (avatarFile) {
+        console.log("📸 Uploading new avatar...");
+        const uploadedUrl = await uploadAvatarDirect(avatarFile, userData.user.id);
+        
+        if (uploadedUrl) {
+          avatar_url = uploadedUrl;
+          console.log("📸 Avatar uploaded successfully:", avatar_url);
+        } else {
+          console.error("❌ Upload returned null, keeping existing avatar");
+          avatar_url = profile.avatar_url;
+        }
+      } else {
+        console.log("📸 No new avatar file selected");
+      }
+      
       const tagsArray = conditionTags
         .split(",")
         .map((tag) => tag.trim())
         .filter((tag) => tag);
-      const updatedProfile = await updateProfile({
+        
+      console.log("📸 Updating profile with:", { fullName, avatar_url, tagsArray });
+      
+      const updatedProfile = await updateProfileDirect(userData.user.id, {
         full_name: fullName,
-        avatar_url,
+        avatar_url: avatar_url,
         condition_tags: tagsArray,
       });
+      
       setProfile(updatedProfile);
       toast.success("Profile updated successfully!");
       setEditDialogOpen(false);
       setAvatarFile(null);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
+      console.error("❌ Update error details:", error);
       toast.error("Error updating profile: " + error.message);
     } finally {
       setProfileLoading(false);
@@ -215,19 +415,30 @@ export default function ProfilePage() {
    * Handles the removal of the avatar
    */
   const handleRemoveAvatar = async () => {
+    if (!profile) {
+      console.log("❌ No profile found, cannot remove avatar");
+      toast.error("Profile not found. Please refresh the page.");
+      return;
+    }
+    
     setProfileLoading(true);
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        throw new Error("User not authenticated");
+      }
+      
       await removeAvatar();
-      const updatedProfile = await updateProfile({
+      
+      const updatedProfile = await updateProfileDirect(userData.user.id, {
         full_name: fullName,
         avatar_url: null,
-        condition_tags: profile?.condition_tags,
+        condition_tags: profile.condition_tags,
       });
+      
       setProfile(updatedProfile);
       toast.success("Avatar removed successfully!");
-
-      window.location.reload();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setEditDialogOpen(false);
     } catch (error: any) {
       toast.error("Error removing avatar: " + error.message);
     } finally {
@@ -243,6 +454,23 @@ export default function ProfilePage() {
     );
   }
 
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="text-center">
+          <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-2">No Profile Found</h1>
+          <p className="text-muted-foreground mb-6">
+            We couldn't find your profile. Please try logging out and back in.
+          </p>
+          <Button onClick={() => router.push("/auth/login")} className="cursor-pointer">
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Head>
@@ -250,7 +478,7 @@ export default function ProfilePage() {
           SymptomSync |{" "}
           {profileToDisplay?.id === profile?.id
             ? "Your Profile"
-            : `Viewing ${profileToDisplay?.full_name || profileToDisplay?.email}'s Profile`}{" "}
+            : `Viewing ${profileToDisplay?.full_name || "User"}'s Profile`}{" "}
         </title>
         <meta name="description" content="View and update your profile" />
       </Head>
@@ -279,10 +507,10 @@ export default function ProfilePage() {
             <h1 className="text-3xl text-foreground font-bold">
               {profileToDisplay?.id === profile?.id
                 ? "Your Profile 🙋‍♂️"
-                : `Viewing ${profileToDisplay?.full_name || profileToDisplay?.email}'s Profile 🧐`}
+                : `Viewing ${profileToDisplay?.full_name || "User"}'s Profile 🧐`}
             </h1>
             <p className="text-lg text-foreground mt-1">
-              {profileToDisplay?.email}
+              {userEmail}
             </p>
           </motion.header>
 
@@ -326,7 +554,10 @@ export default function ProfilePage() {
                       {usr.avatar_url ? (
                         <AvatarImage
                           src={usr.avatar_url}
-                          alt={usr.full_name || usr.email}
+                          alt={usr.full_name || "User"}
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(usr.full_name || "User")}&background=344966&color=fff&bold=true`;
+                          }}
                         />
                       ) : (
                         <AvatarFallback>
@@ -335,7 +566,7 @@ export default function ProfilePage() {
                       )}
                     </Avatar>
                     <span className="font-medium truncate">
-                      {usr.full_name || usr.email}
+                      {usr.full_name || "User"}
                     </span>
                   </motion.li>
                 ))}
@@ -345,24 +576,13 @@ export default function ProfilePage() {
 
           <motion.div variants={fadeInUp}>
             <Card className="p-6 flex flex-col sm:flex-row items-center shadow-2xl rounded-xl bg-background gap-0 overflow-hidden">
-              <Avatar className="w-24 h-24">
-                {profileToDisplay?.avatar_url ? (
-                  <AvatarImage
-                    src={profileToDisplay.avatar_url}
-                    alt={profileToDisplay.full_name || profileToDisplay.email}
-                  />
-                ) : (
-                  <AvatarFallback>
-                    <User className="w-10 h-10" />
-                  </AvatarFallback>
-                )}
-              </Avatar>
+              <ProfileAvatar profile={profileToDisplay} className="w-24 h-24" />
               <div className="mt-4 sm:mt-0 sm:ml-6 flex-1 text-left w-full">
                 <h2 className="text-3xl font-bold truncate">
                   {profileToDisplay?.full_name || "Unnamed User"}
                 </h2>
                 <p className="text-md text-foreground truncate">
-                  {profileToDisplay?.email}
+                  {userEmail}
                 </p>
                 <p className="text-sm text-foreground flex items-center mt-1 truncate">
                   <CalendarDays className="w-4 h-4 mr-1" /> Joined:{" "}
@@ -436,9 +656,10 @@ export default function ProfilePage() {
                       ) : profileToDisplay?.avatar_url ? (
                         <AvatarImage
                           src={profileToDisplay.avatar_url}
-                          alt={
-                            profileToDisplay.full_name || profileToDisplay.email
-                          }
+                          alt={profileToDisplay.full_name || "User"}
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileToDisplay?.full_name || "User")}&background=344966&color=fff&bold=true`;
+                          }}
                         />
                       ) : (
                         <AvatarFallback>

@@ -87,8 +87,6 @@ export default function MedicationReminders() {
   const [totalMeds, setTotalMeds] = useState(0);
 
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const broadcastChannelRef = useRef<any>(null);
 
   /**
    * Trigger a broadcast event to all connected clients
@@ -97,51 +95,9 @@ export default function MedicationReminders() {
    * @param message - The message to send with the event.
    */
   const sendBroadcast = (eventName: string, message: string) => {
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.send({
-        type: "broadcast",
-        event: eventName,
-        payload: { message },
-      });
-    }
+    // Broadcast functionality removed - notifications handled in _app.tsx
+    console.log(`Broadcast (${eventName}): ${message}`);
   };
-
-  useEffect(() => {
-    async function subscribeToUserChannel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/auth/login");
-        return;
-      }
-
-      const userChannelName = `user-channel-${user.id}`;
-      broadcastChannelRef.current = supabase.channel(userChannelName, {
-        config: { broadcast: { self: false } },
-      });
-      const channel = broadcastChannelRef.current;
-
-      channel
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .on("broadcast", { event: "*" }, (payload: any) => {
-          toast.success(
-            `Notification: ${payload.payload.message.replace(/\./g, "")} from another device or tab.`,
-          );
-        })
-        .subscribe((status: string) => {
-          console.log("User-specific channel status:", status);
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-        broadcastChannelRef.current = null;
-      };
-    }
-
-    subscribeToUserChannel();
-  }, [router]);
 
   useEffect(() => {
     async function checkUserAuth() {
@@ -158,64 +114,6 @@ export default function MedicationReminders() {
   useEffect(() => {
     fetchReminders();
   }, [medPage]);
-
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let subscription: any;
-
-    async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      subscription = supabase
-        .channel("medicationChanges")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "medication_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          () => {
-            console.log("Med INSERT received");
-            fetchReminders();
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "medication_reminders",
-            filter: `user_profile_id=eq.${user.id}`,
-          },
-          () => {
-            console.log("Med UPDATE received");
-            fetchReminders();
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "medication_reminders",
-          },
-          () => {
-            fetchReminders();
-          },
-        )
-        .subscribe();
-    }
-    init();
-
-    return () => {
-      if (subscription) supabase.removeChannel(subscription);
-    };
-  }, []);
 
   async function fetchReminders() {
     setLoading(true);
