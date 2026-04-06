@@ -1194,7 +1194,7 @@ export default function Home() {
         <footer className="bg-slate-950 px-6 py-8 text-white">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 md:flex-row">
             <p className="text-xs text-white/70">
-              © {new Date().getFullYear()} SymptomSync. All rights reserved.
+              © {new Date().getFullYear()} SymptomSync. (Akash) All rights reserved.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-white/70">
               <Link href="/privacy" className="hover:text-white">
@@ -1204,7 +1204,7 @@ export default function Home() {
                 Terms of Service
               </Link>
               <Link
-                href="https://github.com/hoangsonww/SymptomSync-Health-App"
+                href="https://github.com/MeAkash77/SymptomSync-Full-stack-AI-Health-Management-Web-App"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 hover:text-white"
