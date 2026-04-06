@@ -1,0 +1,275 @@
+name: CI / CD Pipeline – SymptomSync App
+
+# Copyright: Son Nguyen, 2025
+# License: MIT
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 20
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  #  ⚙️ 0. Preflight Setup                                         #
+  # ────────────────────────────────────────────────────────────────
+  formatting:
+    name: "🔧 Format & Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci --legacy-peer-deps
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+  # ────────────────────────────────────────────────────────────────
+  #  💾 0.1 Cache Dependencies                                     #
+  # ────────────────────────────────────────────────────────────────
+  cache-deps:
+    name: "💾 Cache Dependencies"
+    needs: [formatting]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache root npm
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+      - name: Cache web deps
+        uses: actions/cache@v3
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-web-npm-${{ hashFiles('web/package-lock.json') }}
+
+  # ────────────────────────────────────────────────────────────────
+  #  🔒 2. Security & License Scan                                 #
+  # ────────────────────────────────────────────────────────────────
+  security-scan:
+    name: "🔒 Security & License Scan"
+    needs: [cache-deps]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install root deps (if any)
+        run: npm install --legacy-peer-deps || true
+
+      - name: Install web deps
+        run: npm ci --legacy-peer-deps --prefix web
+
+      - name: Audit web dependencies
+        run: npm audit --audit-level=high --prefix web || true
+
+      - name: Check web licenses
+        run: npx license-checker --production --start web || true
+
+      - name: Static analysis (ESLint & Semgrep)
+        run: |
+          npx eslint "backend/**/*.{js,ts}" "web/**/*.{js,ts}" --max-warnings=0 || true
+          npx semgrep --config=auto --timeout 60 || true
+
+  # ────────────────────────────────────────────────────────────────
+  #  🧪 2. Unit & E2E Tests (Matrix)                               #
+  # ────────────────────────────────────────────────────────────────
+  testing:
+    name: "🧪 Unit & E2E Tests"
+    needs: [security-scan]
+    strategy:
+      matrix:
+        node: [20]
+    runs-on: ubuntu-latest
+    env:
+      TEST_B64: ${{ secrets.SCRIPT_TEST }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Decode & run tests
+        run: |
+          echo "$TEST_B64" | base64 --decode > test.sh
+          chmod +x test.sh
+          ./test.sh
+
+  # ────────────────────────────────────────────────────────────────
+  #  🏗 3. Build Next.js (web/)                                    #
+  # ────────────────────────────────────────────────────────────────
+  build:
+    name: "🏗 Build Next.js (web/)"
+    runs-on: ubuntu-latest
+    needs: [testing]
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd web
+          npm ci --legacy-peer-deps
+
+      - name: Build Next.js app
+        run: |
+          cd web
+          npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: |
+            web/.next/**
+            web/public/**
+            web/next.config.js
+
+  # ────────────────────────────────────────────────────────────────
+  #  🐳 4. Build & Push Docker Image                               #
+  # ────────────────────────────────────────────────────────────────
+  docker:
+    name: "🐳 Build & Push Docker Image"
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push SymptomSync image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/symptomsync:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/symptomsync:latest
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NODE_ENV=production
+
+  # ────────────────────────────────────────────────────────────────
+  #  🔍 5. Image Vulnerability Scan                                #
+  # ────────────────────────────────────────────────────────────────
+  image-scan:
+    name: "🔍 Image Vulnerability Scan"
+    needs: [docker]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.2.6
+        with:
+          version: v0.69.3
+          cache: true
+      - name: Scan SymptomSync image
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/symptomsync:latest
+          format: sarif
+          exit-code: 0
+          skip-setup-trivy: true
+
+  # ────────────────────────────────────────────────────────────────
+  #  ⚡ 6. Performance Benchmark                                    #
+  # ────────────────────────────────────────────────────────────────
+  perf-test:
+    name: "⚡ Performance Benchmark"
+    needs: [docker]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Run container
+        run: |
+          docker run -d --rm -p 5000:5000 ghcr.io/${{ github.repository_owner }}/symptomsync:latest
+          sleep 5
+      - name: Smoke test with Artillery
+        run: npx artillery quick --count 20 -n 50 http://localhost:5000/health || true
+
+  # ────────────────────────────────────────────────────────────────
+  #  🚀 7. Deploy (AWS CDK + Ansible)                              #
+  # ────────────────────────────────────────────────────────────────
+  deploy:
+    name: "🚀 Deploy (AWS CDK + Ansible)"
+    runs-on: ubuntu-latest
+    needs: [docker]
+    env:
+      DEPLOY_B64: ${{ secrets.SCRIPT_DEPLOY }}
+      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Decode & run deploy script
+        run: |
+          echo "$DEPLOY_B64" | base64 --decode > deploy.sh
+          chmod +x deploy.sh
+          ./deploy.sh
+
+  # ────────────────────────────────────────────────────────────────
+  #  🎉 Pipeline Complete Step                                     #
+  # ────────────────────────────────────────────────────────────────
+  complete:
+    name: "🎉 Pipeline Complete"
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    steps:
+      - name: Deployment Summary (log)
+        run: |
+          echo "::group::🎉 SymptomSync Deployment Summary"
+          echo ""
+          echo "- 🌐 **Web App:** https://symptomsync.vercel.app"
+          echo "- 🐳 **Container Image:** ghcr.io/${{ github.repository_owner }}/symptomsync:${{ github.sha }}"
+          echo "- 🚀 **AWS/CDK + Ansible Deployed:** ✅"
+          echo ""
+          echo "✅ All stages completed successfully!"
+          echo "::endgroup::"
+
+      - name: Write Summary to GitHub Step Summary
+        run: |
+          {
+            echo "## 🚀 SymptomSync CI/CD Pipeline Complete"
+            echo ""
+            echo "| Item                  | Details                                                |"
+            echo "| --------------------- | ------------------------------------------------------ |"
+            echo "| **Live Web App**      | [https://symptomsync.vercel.app](https://symptomsync.vercel.app) |"
+            echo "| **Container Image**   | `ghcr.io/${{ github.repository_owner }}/symptomsync:${{ github.sha }}` |"
+            echo "| **AWS Deployment**    | Completed via AWS CDK & Ansible                        |"
+            echo ""
+            echo "**Completed at** $(date -u +"%Y-%m-%dT%H:%M:%SZ") UTC"
+          } >> $GITHUB_STEP_SUMMARY
