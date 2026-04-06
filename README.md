@@ -427,14 +427,6 @@ We have set up GitHub Actions for continuous integration and deployment. The wor
 - Deploys the AWS stack using the Ansible playbook
 - Notifies the team on success/failure
 
-For more details, check out the `.github/workflows/ci.yml` file in the repository.
-
-<p align="center">
-  <img src="docs/img/gh.png" alt="GitHub Actions CI/CD Workflow" width="100%"/>
-</p>
-
-## Testing
-
 Current repo testing and validation commands:
 
 - **Frontend (`web/`)**
