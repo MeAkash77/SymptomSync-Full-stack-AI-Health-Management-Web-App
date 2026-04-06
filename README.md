@@ -1,21 +1,21 @@
-# SymptomSync - A Health Management Web App 💊
+# SymptomSync - Full Stack AI Health Management Web App 💊
 
 Build with patient care in mind, **SymptomSync** is a web application designed to help users manage their health and wellness. It provides a comprehensive dashboard for tracking medications, appointments, and health logs, all while ensuring real-time synchronization across devices. With features like medication reminders, appointment tracking, and an AI-powered chatbot, **SymptomSync** empowers users to take smarter control of their health journey and live healthier lives 💪.
 
 <p align="center">
-  <a href="https://symptomsync.vercel.app" target="_blank">
+  <a href="https://symptom-sync-full-stack-ai-health-m.vercel.app" target="_blank">
     <img src="docs/img/logo.jpeg" alt="SymptomSync Logo" width="45%"/>
   </a>
 </p>
 
 > [!NOTE]
-> Developed by [David Nguyen](https://sonnguyenhoang.com) and Erica Ocbu at UNC–Chapel Hill. **© SymptomSync Team, 2025**.
+> Developed by [Akash](https://github.com/MeAkash77) and Erica Ocbu at UNC–Chapel Hill. **© SymptomSync Team, 2025**.
 
 ![TypeScript](https://img.shields.io/badge/-TypeScript-05122A?style=flat&logo=typescript) ![JavaScript](https://img.shields.io/badge/-JavaScript-05122A?style=flat&logo=javascript) ![Node.js](https://img.shields.io/badge/-Node.js-05122A?style=flat&logo=nodedotjs) ![React](https://img.shields.io/badge/-React-05122A?style=flat&logo=react) ![Next.js](https://img.shields.io/badge/-Next.js-05122A?style=flat&logo=nextdotjs) ![Shadcn/ui](https://img.shields.io/badge/-Shadcn_UI-05122A?style=flat&logo=shadcnui) ![TailwindCSS](https://img.shields.io/badge/-TailwindCSS-05122A?style=flat&logo=tailwindcss) ![CSS](https://img.shields.io/badge/-CSS-05122A?style=flat&logo=css) ![HTML5](https://img.shields.io/badge/-HTML5-05122A?style=flat&logo=html5) ![Chart.js](https://img.shields.io/badge/-Chart.js-05122A?style=flat&logo=chartdotjs) ![Framer Motion](https://img.shields.io/badge/-Framer_Motion-05122A?style=flat&logo=framer) ![Supabase](https://img.shields.io/badge/-Supabase-05122A?style=flat&logo=supabase) ![PostgreSQL](https://img.shields.io/badge/-PostgreSQL-05122A?style=flat&logo=postgresql) ![Google AI](https://img.shields.io/badge/-Google_AI-05122A?style=flat&logo=google) ![Vercel](https://img.shields.io/badge/-Vercel-05122A?style=flat&logo=vercel) ![Docker](https://img.shields.io/badge/-Docker-05122A?style=flat&logo=docker) ![Git](https://img.shields.io/badge/-Git-05122A?style=flat&logo=git) ![GitHub](https://img.shields.io/badge/-GitHub-05122A?style=flat&logo=github) ![npm](https://img.shields.io/badge/-npm-05122A?style=flat&logo=npm) ![Webpack](https://img.shields.io/badge/-Webpack-05122A?style=flat&logo=webpack) ![Babel](https://img.shields.io/badge/-Babel-05122A?style=flat&logo=babel) ![ESLint](https://img.shields.io/badge/-ESLint-05122A?style=flat&logo=eslint) ![Prettier](https://img.shields.io/badge/-Prettier-05122A?style=flat&logo=prettier) ![Postman](https://img.shields.io/badge/-Postman-05122A?style=flat&logo=postman) ![Jest](https://img.shields.io/badge/-Jest-05122A?style=flat&logo=jest) ![Shell](https://img.shields.io/badge/-Shell-05122A?style=flat&logo=gnu-bash) ![Makefile](https://img.shields.io/badge/-Makefile-05122A?style=flat&logo=gnu) ![AWS](https://img.shields.io/badge/-Amazon%20Web%20Services-05122A?style=flat&logo=awesomewm) ![Ansible](https://img.shields.io/badge/-Ansible-05122A?style=flat&logo=ansible) ![GitHub Actions](https://img.shields.io/badge/-GitHub_Actions-05122A?style=flat&logo=githubactions) ![WebSockets](https://img.shields.io/badge/-WebSockets-05122A?style=flat&logo=socket) ![ICS](https://img.shields.io/badge/-ICS-05122A?style=flat&logo=googlecalendar) ![Figma](https://img.shields.io/badge/-Figma-05122A?style=flat&logo=figma) ![Socket.IO](https://img.shields.io/badge/-Socket.IO-05122A?style=flat&logo=socketdotio) 
 ![LangGraph](https://img.shields.io/badge/-LangGraph-05122A?style=flat&logo=langgraph) ![LangChain](https://img.shields.io/badge/-LangChain-05122A?style=flat&logo=langchain) ![Model Context Protocol](https://img.shields.io/badge/-Model_Context_Protocol-05122A?style=flat&logo=modelcontextprotocol) ![ChromaDB](https://img.shields.io/badge/-ChromaDB-05122A?style=flat&logo=chromatic) ![FastAPI](https://img.shields.io/badge/-FastAPI-05122A?style=flat&logo=fastapi) ![OpenAPI](https://img.shields.io/badge/-OpenAPI-05122A?style=flat&logo=openapiinitiative)
 
 > [!IMPORTANT] 
-> **Live Web App: [https://symptomsync.vercel.app](https://symptomsync.vercel.app) 🚀**
+> **Live Web App: [https://symptom-sync-full-stack-ai-health-m.vercel.app](https://symptom-sync-full-stack-ai-health-m.vercel.app) 🚀**
 
 ## Table of Contents
 
@@ -102,7 +102,7 @@ The UI of the app was designed with Figma and Tailwind CSS. The design is respon
   <img src="docs/img/barcode.gif" alt="Barcode Scanning Screenshot" width="100%"/>
 </p>
 
-... and so many more! Explore [our app](https://symptomsync.vercel.app) to see the full range of features and functionality.
+... and so many more! Explore [My app](https://symptom-sync-full-stack-ai-health-m.vercel.app) to see the full range of features and functionality.
 
 > [!IMPORTANT]
 > Link to Figma prototype: [SymptomSync Figma Prototype](https://www.figma.com/design/YwoQ1OgAPYOfFOwlbf3aP0/COMP-426-Final-Project-Prototype?node-id=2-287&t=yC99fAWyYGJEOY3N-1)
@@ -220,7 +220,7 @@ flowchart LR
 1. Clone the repo
 
    ```bash
-   git clone https://github.com/hoangsonww/SymptomSync-Health-App.git
+   git clone https://github.com/MeAkash77/SymptomSync-Full-stack-AI-Health-Management-Web-App.git
    cd SymptomSync-Health-App
    ```
 
@@ -325,13 +325,13 @@ For more details on how Agentic AI is integrated into SymptomSync, refer to the 
 Check out our demo video showcasing the app's features and functionality: [Link to Demo Video](https://drive.google.com/file/d/1DKOIBnTep6rMrOBSRWPVhk2s8g8uIYef/view?usp=sharing)
 
 <p align="center">
-  <a href="https://drive.google.com/file/d/1DKOIBnTep6rMrOBSRWPVhk2s8g8uIYef/view?usp=sharing" target="_blank">
+  <a href="https://symptom-sync-full-stack-ai-health-m.vercel.app/" target="_blank">
     <img src="docs/img/demo_thumbnail.png" alt="Demo Video Thumbnail" width="100%"/>
   </a>
 </p>
 
 > [!TIP]
-> This video might not be comprehensive and cover all features of our app - so please feel free to give our live app at [symptomsync.vercel.app](https://symptomsync.vercel.app) a try to test out all the features!
+> This video might not be comprehensive and cover all features of our app - so please feel free to give our live app at [https://symptom-sync-full-stack-ai-health-m.vercel.app](https://symptom-sync-full-stack-ai-health-m.vercel.app) a try to test out all the features!
 
 ## High-Fidelity Prototype
 
@@ -455,13 +455,6 @@ Use these commands in CI/local validation to reflect the current implementation.
 4. Commit & PR with description
 5. Wait for review and merge
 
-## Authors
-
-A big thank you to our team members for their hard work and dedication:
-
-- [David Nguyen](https://github.com/hoangsonww)
-- [Erica Ocbu](https://github.com/ericaocbu)
-
 ## License
 
 [MIT License](LICENSE) - Feel free to use, modify, and distribute this code as you wish. Contributions are welcome!
@@ -488,10 +481,6 @@ We would like to acknowledge the following resources and libraries that made thi
 - [ESLint](https://eslint.org) for code linting
 - [Prettier](https://prettier.io) for code formatting
 - and many more!
-
-## Contact
-
-For any questions, feedback, or contributions, feel free to open an issue [here](https://github.com/hoangsonww/SymptomSync-Health-App/issues) or reach out to us via [GitHub Discussions](https://github.com/hoangsonww/SymptomSync-Health-App/discussions). We appreciate your interest in **SymptomSync** and look forward to hearing from you!
 
 ---
 
